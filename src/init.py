@@ -5,7 +5,7 @@ if __name__ == '__main__':
         print('error')
     else:
         filename = sys.argv[1]
-        file = open(filename, 'r', encoding='gbk')
+        file = open(filename, 'r', encoding='utf-8')
 
         set = file.readlines()
 
