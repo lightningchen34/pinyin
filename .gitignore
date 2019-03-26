@@ -112,6 +112,7 @@ venv.bak/
 Icon?
 ehthumbs.db
 Thumbs.db
+.vscode/
 
 # corpus
 *-corpus.pk
