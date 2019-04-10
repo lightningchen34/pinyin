@@ -5,6 +5,17 @@ import numpy as np
 
 from ChineseTone import PinyinHelper, PinyinFormat
 
+def translate(cn):
+    ret = PinyinHelper.convertToPinyinFromSentence(cn, pinyinFormat=PinyinFormat.WITHOUT_TONE)
+    for i in range(len(ret)):
+        if ret[i] == 'lve':
+            ret[i] = 'lue'
+        if ret[i] == 'nve':
+            ret[i] = 'nue'
+        if ret[i] == 'r':
+            ret[i] = 'er'
+    return ret
+
 def loadAlphabet(filename):
     file = open(filename, 'r', encoding='utf-8')
 
@@ -49,7 +60,7 @@ def formatCorpus():
             print(tot)
             sens = value[index]
             slist = list(sens)
-            spin = PinyinHelper.convertToPinyinFromSentence(sens, pinyinFormat=PinyinFormat.WITHOUT_TONE)
+            spin = translate(sens)
             tmp_sen = ''
             tmp_pin = ''
             for j in range(len(slist)):
@@ -57,18 +68,13 @@ def formatCorpus():
                     if tmp_sen == '':
                         continue
                     sentences.append([tmp_sen])
-                    if len(sentences) >= 131072:
+                    if len(sentences) >= 1048576:
                         filetot += 1
                         write(filetot, sentences)
-                        exit(0)
                     tmp_pin = ''
                     tmp_sen = ''
                 else:
                     tmp_sen = tmp_sen + slist[j]
-                    if spin[j] == 'lve':
-                        spin[j] = 'lue'
-                    if spin[j] == 'nve':
-                        spin[j] = 'nue'
                     if tmp_pin == '':
                         tmp_pin = spin[j]
                     else:
@@ -81,8 +87,8 @@ def formatCorpus():
 
     tot, filetot = load('data/main-corpus.pk', 'html', sentences, tot, filetot)
     tot, filetot = load('data/main-corpus.pk', 'title', sentences, tot, filetot)
-    # tot, filetot = load('data/sec-corpus.pk', 'title', sentences, tot, filetot)
-    # tot, filetot = load('data/sec-corpus.pk', 'content', sentences, tot, filetot)
+    tot, filetot = load('data/sec-corpus.pk', 'title', sentences, tot, filetot)
+    tot, filetot = load('data/sec-corpus.pk', 'content', sentences, tot, filetot)
     
     print(tot, filetot)
 
@@ -95,7 +101,8 @@ def loadCorpus(num):
 
 def init_probability(chinese, index):
     totmat = np.zeros((len(index), len(index)), np.int32)
-    for i in range(1):
+    for i in range(48):
+        print(i + 1)
         data = loadCorpus(i + 1)
         for item in data:            
             cn = list('【' + item[0] + '】')
@@ -112,21 +119,54 @@ def init_probability(chinese, index):
                 i2 = index[cn[j + 1]]
                 totmat[(i1, i2)] += 1
     print('done')
-    return totmat
 
-def split_probability(mat, chinese, index):
+    filename = "data/tot-probability.pk"
+    file = open(filename, 'wb')
+    pickle.dump(totmat, file)
+    file.close()
+
+    # return totmat
+
+def split_probability(chinese, index):
+
+    file = open("data/tot-probability.pk", 'rb')
+    mat = pickle.load(file)
+    file.close()
+
     mats = dict()
     pys = len(chinese)
+    tot = 0
+
+    def softmax(m):
+        tmp1 = np.average(m, axis=1)
+        tmp2 = np.max(m, axis=1)
+        tmp = np.sqrt(tmp1 * tmp2)
+        tmp = np.sqrt(tmp * tmp2)
+        # tmp = np.sqrt(tmp)
+        m /= tmp.reshape((m.shape[0], 1))
+        m = np.exp(m)
+        tmp = np.sum(m, axis=1)
+        m /= tmp.reshape((m.shape[0], 1))
+        m = -np.log(m)
+        return m
+
     for k1, v1 in chinese.items():
         for k2, v2 in chinese.items():
             l1 = len(v1)
             l2 = len(v2)
+            tot += l1 * l2
             tmp = np.zeros((l1, l2))
             for i1 in range(len(v1)):
                 for i2 in range(len(v2)):
                     tmp[(i1, i2)] = mat[(index[v1[i1]], index[v2[i2]])]
-            print(k1, k2, np.sum(tmp))
-            mats[(k1, k2)] = tmp
+            # print(k1, k2, np.sum(tmp))
+            mats[(k1, k2)] = softmax(tmp)
+
+    print(tot)
+
+    file = open("data/split-probability.pk", 'wb')
+    pickle.dump(mats, file)
+    file.close()
 
 
 if __name__ == '__main__':
@@ -135,12 +175,21 @@ if __name__ == '__main__':
     else:
         filename = sys.argv[1]
         pinyin, chinese, index = loadAlphabet(filename)
-        print(len(chinese))
+        # print(len(chinese))
 
         # formatCorpus()
         
-        mat = init_probability(chinese, index)
+        # mat = init_probability(chinese, index)
 
-        split_probability(mat, chinese, index)
+        split_probability(chinese, index)
 
 
+        file = open("data/split-probability.pk", 'rb')
+        mat = pickle.load(file)
+        file.close()
+        tot = 0
+        for k, v in mat.items():
+            print(k, v)
+            tot += 1
+            if tot == 100:
+                break
