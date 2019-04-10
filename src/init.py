@@ -12,6 +12,8 @@ def loadAlphabet(filename):
 
     pinyin = dict()
     chinese = dict()
+    chars = 0
+    index = dict()
     for line in set:
         line = line.strip()
         line = line.split(' ')
@@ -19,12 +21,15 @@ def loadAlphabet(filename):
         for value in line:
             if value == line[0]:
                 continue
+            if index.get(value) == None:
+                index[value] = chars
+                chars += 1
             if pinyin.get(value) == None:
-                pinyin[value] = [(line[0], len(chinese[line[0]]))]
+                pinyin[value] = [line[0]]
             else:
-                pinyin[value].append((line[0], len(chinese[line[0]])))
+                pinyin[value].append(line[0])
             chinese[line[0]].append(value)
-    return pinyin, chinese
+    return pinyin, chinese, index
 
 def formatCorpus():
 
@@ -35,7 +40,7 @@ def formatCorpus():
         file.close()
         sentences.clear()
 
-    def load(filename, index, important, sentences, tot, filetot):
+    def load(filename, index, sentences, tot, filetot):
         file = open(filename, 'rb')
         data = pickle.load(file)
         file.close()
@@ -51,16 +56,19 @@ def formatCorpus():
                 if slist[j] == spin[j]:
                     if tmp_sen == '':
                         continue
-                    sentences.append([tmp_sen, tmp_pin, important])
-                    if len(sentences) >= 1048576:
+                    sentences.append([tmp_sen])
+                    if len(sentences) >= 131072:
                         filetot += 1
                         write(filetot, sentences)
+                        exit(0)
                     tmp_pin = ''
                     tmp_sen = ''
                 else:
                     tmp_sen = tmp_sen + slist[j]
                     if spin[j] == 'lve':
                         spin[j] = 'lue'
+                    if spin[j] == 'nve':
+                        spin[j] = 'nue'
                     if tmp_pin == '':
                         tmp_pin = spin[j]
                     else:
@@ -71,10 +79,10 @@ def formatCorpus():
     tot = 0
     filetot = 0
 
-    tot, filetot = load('data/main-corpus.pk', 'html', 2, sentences, tot, filetot)
-    tot, filetot = load('data/main-corpus.pk', 'title', 1, sentences, tot, filetot)
-    tot, filetot = load('data/sec-corpus.pk', 'title', 4, sentences, tot, filetot)
-    tot, filetot = load('data/sec-corpus.pk', 'content', 5, sentences, tot, filetot)
+    tot, filetot = load('data/main-corpus.pk', 'html', sentences, tot, filetot)
+    tot, filetot = load('data/main-corpus.pk', 'title', sentences, tot, filetot)
+    # tot, filetot = load('data/sec-corpus.pk', 'title', sentences, tot, filetot)
+    # tot, filetot = load('data/sec-corpus.pk', 'content', sentences, tot, filetot)
     
     print(tot, filetot)
 
@@ -85,59 +93,54 @@ def loadCorpus(num):
     file.close()
     return data
 
-def init_probability(chinese, pinyin):
-    pys = len(chinese)
-    mats = dict()
-    for keyi, valuei in chinese.items():
-        for keyj, valuej in chinese.items():
-            a = len(valuei)
-            b = len(valuej)
-            mats[(keyi, keyj)] = np.zeros((a, b))
-    cnt = 0
-
-    def find_id(cn, py):
-        if pinyin.get(cn) == None:
-            return -1
-        for item in pinyin[cn]:
-            if item[0] is py:
-                return item[1]
-        return -1
-
+def init_probability(chinese, index):
+    totmat = np.zeros((len(index), len(index)), np.int32)
     for i in range(1):
         data = loadCorpus(i + 1)
-        for item in data:
-            cnt += 1
-            print(cnt, item)
-            cn = list(item[0])
-            py = item[1].split(' ')
+        for item in data:            
+            cn = list('【' + item[0] + '】')
             skip = False
-            for x, y in zip(cn, py):
-                if find_id(x, y) == -1:
+            for x in cn:
+                if index.get(x) == None:
                     skip = True
                     break
             if skip:
                 continue
-            l = len(py)
+            l = len(cn)
             for j in range(l - 1):
-                i1 = find_id(cn[j], py[j])
-                i2 = find_id(cn[j + 1], py[j + 1])
-                mats[(py[j], py[j + 1])][(i1, i2)] += 1
-    return mats
+                i1 = index[cn[j]]
+                i2 = index[cn[j + 1]]
+                totmat[(i1, i2)] += 1
+    print('done')
+    return totmat
+
+def split_probability(mat, chinese, index):
+    mats = dict()
+    pys = len(chinese)
+    for k1, v1 in chinese.items():
+        for k2, v2 in chinese.items():
+            l1 = len(v1)
+            l2 = len(v2)
+            tmp = np.zeros((l1, l2))
+            for i1 in range(len(v1)):
+                for i2 in range(len(v2)):
+                    tmp[(i1, i2)] = mat[(index[v1[i1]], index[v2[i2]])]
+            print(k1, k2, np.sum(tmp))
+            mats[(k1, k2)] = tmp
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         print('error')
     else:
         filename = sys.argv[1]
-        pinyin, chinese = loadAlphabet(filename)
-        # print(pinyin['惇'])
+        pinyin, chinese, index = loadAlphabet(filename)
         print(len(chinese))
 
         # formatCorpus()
         
-        # data = loadCorpus(10)
-        # random.shuffle(data)
-        # print(data[0:10])
+        mat = init_probability(chinese, index)
 
-        mats = init_probability(chinese, pinyin)
+        split_probability(mat, chinese, index)
+
 
